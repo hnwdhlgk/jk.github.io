@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Syntax check
+        run: |
+          python -m py_compile bot.py webapp.py
+          echo "语法检查通过"
+
+      - name: Run unit tests
+        env:
+          TELEGRAM_BOT_TOKEN: test:dummy
+          ADMIN_PASSWORD: test123
+        run: |
+          python -c "
+          import bot
+          from webapp import create_app
+          import tempfile, os
+
+          # 测试 DataStore
+          tmp = tempfile.mktemp(suffix='.json')
+          ds = bot.DataStore(tmp)
+          assert ds.add_keyword('123', '测试') == True
+          assert ds.add_keyword('123', '测试') == False
+          assert ds.remove_keyword('123', '测试') == True
+          assert ds.set_forward('123', '-100123') == True
+          assert ds.get('123').forward_to == '-100123'
+          ds.clear_forward('123')
+          assert ds.get('123').forward_to is None
+          ds.ensure_chat('456', '测试群')
+          assert ds.get('456').chat_title == '测试群'
+          os.unlink(tmp)
+          print('DataStore 测试通过')
+
+          # 测试 Flask 应用
+          tmp2 = tempfile.mktemp(suffix='.json')
+          ds2 = bot.DataStore(tmp2)
+          app = create_app(ds2, admin_password='test123')
+          app.config['TESTING'] = True
+          client = app.test_client()
+
+          resp = client.get('/login')
+          assert resp.status_code == 200
+          resp = client.post('/login', data={'password': 'test123'}, follow_redirects=True)
+          assert resp.status_code == 200
+          resp = client.post('/chats/add', data={'chat_id': '-1001', 'title': 'T'}, follow_redirects=True)
+          assert resp.status_code == 200
+          resp = client.get('/chats/-1001')
+          assert resp.status_code == 200
+          resp = client.post('/chats/-1001/keywords/add', data={'keyword': 'kw'}, follow_redirects=True)
+          assert resp.status_code == 200
+          os.unlink(tmp2)
+          print('Flask 应用测试通过')
+          "
+
+      - name: Verify templates exist
+        run: |
+          test -f templates/login.html
+          test -f templates/chat_list.html
+          test -f templates/chat_detail.html
+          test -f Dockerfile
+          echo "所有必要文件存在"

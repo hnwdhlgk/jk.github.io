@@ -1,0 +1,33 @@
+# Render 一键部署配置
+# 使用方法：将代码推送到 GitHub 后，在 Render 中选择 "New +" -> "Blueprint"，连接仓库即可自动部署
+# 文档：https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: telegram-keyword-bot
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # 健康检查：Render 用此路径判断服务是否存活
+    healthCheckPath: /login
+    # 环境变量
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        description: Telegram Bot Token（从 @BotFather 获取）
+        sync: false  # 不在代码中同步，需在 Render 面板手动设置
+      - key: ADMIN_PASSWORD
+        description: Web 管理后台登录密码
+        sync: false
+      - key: WEB_PORT
+        value: "8080"
+      - key: WEB_HOST
+        value: "0.0.0.0"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+    # 持久化磁盘（保存 bot_data.json，避免重启后数据丢失）
+    # 注意：免费套餐不支持磁盘，需要升级到 starter 及以上
+    # disk:
+    #   name: data
+    #   mountPath: /app/data
+    #   sizeGB: 1

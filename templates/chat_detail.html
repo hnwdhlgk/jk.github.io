@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ display_name }} - 群组管理</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+        }
+        .header {
+            background: #1f2937;
+            color: #fff;
+            padding: 0 24px;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .header h1 { font-size: 17px; font-weight: 600; }
+        .header .nav-links { display: flex; gap: 16px; align-items: center; }
+        .header a { color: #9ca3af; text-decoration: none; font-size: 14px; }
+        .header a:hover { color: #fff; }
+        .container { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+        .page-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #1a1a1a;
+        }
+        .page-subtitle {
+            font-size: 13px;
+            color: #888;
+            margin-bottom: 20px;
+            font-family: monospace;
+        }
+        .flash {
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+        .flash.error { background: #fff2f0; color: #cf1322; border: 1px solid #ffccc7; }
+        .flash.success { background: #f6ffed; color: #389e0d; border: 1px solid #b7eb8f; }
+        .card {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            font-weight: 600;
+            font-size: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .card-body { padding: 20px; }
+        .keyword-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .keyword-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: #e6f4ff;
+            color: #0958d9;
+            border-radius: 16px;
+            font-size: 14px;
+        }
+        .keyword-tag form { display: inline; margin: 0; }
+        .keyword-tag button {
+            background: none;
+            border: none;
+            color: #0958d9;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0;
+            line-height: 1;
+            opacity: 0.6;
+        }
+        .keyword-tag button:hover { opacity: 1; }
+        .empty-tip {
+            color: #999;
+            font-size: 14px;
+            padding: 8px 0;
+        }
+        .form-row {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+        .form-group { display: flex; flex-direction: column; flex: 1; }
+        .form-group label { font-size: 13px; color: #666; margin-bottom: 6px; }
+        .form-group input, .form-group select {
+            padding: 9px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .form-group input:focus { outline: none; border-color: #1677ff; }
+        .btn {
+            display: inline-block;
+            padding: 9px 18px;
+            border-radius: 6px;
+            font-size: 14px;
+            text-decoration: none;
+            cursor: pointer;
+            border: none;
+            font-weight: 500;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-primary { background: #1677ff; color: #fff; }
+        .btn-primary:hover { background: #0958d9; }
+        .btn-danger { background: #ff4d4f; color: #fff; }
+        .btn-danger:hover { background: #d9363e; }
+        .btn-outline {
+            background: #fff;
+            color: #666;
+            border: 1px solid #d9d9d9;
+        }
+        .btn-outline:hover { border-color: #1677ff; color: #1677ff; }
+        .btn-sm { padding: 5px 12px; font-size: 13px; }
+        .forward-info {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 14px;
+            font-size: 14px;
+        }
+        .forward-info.active { background: #f6ffed; border: 1px solid #b7eb8f; color: #389e0d; }
+        .forward-info.inactive { background: #fafafa; border: 1px solid #f0f0f0; color: #999; }
+        .forward-info code {
+            background: rgba(0,0,0,0.06);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td {
+            padding: 10px 14px;
+            text-align: left;
+            border-bottom: 1px solid #f5f5f5;
+            font-size: 13px;
+            vertical-align: top;
+        }
+        th { color: #888; font-weight: 500; background: #fafafa; }
+        tr:last-child td { border-bottom: none; }
+        .hit-keyword {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #fff7e6;
+            color: #d46b08;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .hit-sender { color: #1a1a1a; font-weight: 500; }
+        .hit-time { color: #999; white-space: nowrap; }
+        .hit-preview { color: #666; max-width: 300px; word-break: break-all; }
+        .section-actions { display: flex; gap: 8px; }
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            color: #1677ff;
+            text-decoration: none;
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+        .back-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>关键词监控机器人 · 管理后台</h1>
+        <div class="nav-links">
+            <a href="{{ url_for('chat_list') }}">群组列表</a>
+            <a href="{{ url_for('logout') }}">退出登录</a>
+        </div>
+    </div>
+    <div class="container">
+        <a href="{{ url_for('chat_list') }}" class="back-link">← 返回群组列表</a>
+        <div class="page-title">{{ display_name }}</div>
+        <div class="page-subtitle">Chat ID: {{ chat_id }}</div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        <!-- 关键词管理 -->
+        <div class="card">
+            <div class="card-header">
+                <span>监控关键词（{{ data.keywords|length }} 个）</span>
+            </div>
+            <div class="card-body">
+                {% if data.keywords %}
+                <div class="keyword-list">
+                    {% for kw in data.keywords %}
+                    <span class="keyword-tag">
+                        {{ kw }}
+                        <form method="POST" action="{{ url_for('keyword_delete', chat_id=chat_id, keyword=kw) }}" style="display:inline;">
+                            <button type="submit" title="删除">&times;</button>
+                        </form>
+                    </span>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="empty-tip">暂无监控关键词，添加后将自动监听群内消息。</p>
+                {% endif %}
+                <form method="POST" action="{{ url_for('keyword_add', chat_id=chat_id) }}" class="form-row">
+                    <div class="form-group">
+                        <label>添加关键词</label>
+                        <input type="text" name="keyword" placeholder="输入关键词，如：优惠活动" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">添加</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 转发配置 -->
+        <div class="card">
+            <div class="card-header">
+                <span>消息转发配置</span>
+            </div>
+            <div class="card-body">
+                {% if data.forward_to %}
+                <div class="forward-info active">
+                    ✅ 转发已启用，目标聊天 ID：<code>{{ data.forward_to }}</code>
+                </div>
+                {% else %}
+                <div class="forward-info inactive">
+                    ⭕ 未设置转发目标，命中消息仅在本群提醒。
+                </div>
+                {% endif %}
+                <form method="POST" action="{{ url_for('forward_set', chat_id=chat_id) }}" class="form-row">
+                    <div class="form-group">
+                        <label>目标聊天 ID（留空并提交可清除）</label>
+                        <input type="text" name="forward_to" value="{{ data.forward_to or '' }}" placeholder="-1001234567890 或 用户ID">
+                    </div>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                    {% if data.forward_to %}
+                    <button type="submit" formaction="{{ url_for('forward_clear', chat_id=chat_id) }}" class="btn btn-outline">清除转发</button>
+                    {% endif %}
+                </form>
+                <p style="margin-top:10px;font-size:12px;color:#999;">
+                    提示：在目标聊天中让机器人发送 /getid 可获取其 ID；机器人需在目标聊天中存在且有发消息权限。
+                </p>
+            </div>
+        </div>
+
+        <!-- 命中记录 -->
+        <div class="card">
+            <div class="card-header">
+                <span>命中记录（{{ data.history|length }} 条）</span>
+                {% if data.history %}
+                <div class="section-actions">
+                    <form method="POST" action="{{ url_for('history_clear', chat_id=chat_id) }}" onsubmit="return confirm('确定清空所有命中记录？');">
+                        <button type="submit" class="btn btn-danger btn-sm">清空记录</button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-body" style="padding:0;overflow-x:auto;">
+                {% if data.history %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:140px;">时间</th>
+                            <th style="width:100px;">关键词</th>
+                            <th style="width:140px;">发送者</th>
+                            <th>内容预览</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rec in data.history[:50] %}
+                        <tr>
+                            <td class="hit-time">{{ rec.time }}</td>
+                            <td><span class="hit-keyword">{{ rec.keyword }}</span></td>
+                            <td class="hit-sender">{{ rec.sender }}</td>
+                            <td class="hit-preview">{{ rec.preview }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% if data.history|length > 50 %}
+                <div style="padding:12px 20px;text-align:center;color:#999;font-size:13px;border-top:1px solid #f5f5f5;">
+                    仅显示最近 50 条，共 {{ data.history|length }} 条
+                </div>
+                {% endif %}
+                {% else %}
+                <div style="padding:32px;text-align:center;color:#999;font-size:14px;">
+                    暂无命中记录
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>
