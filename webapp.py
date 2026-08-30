@@ -1,10 +1,11 @@
 """
-Web 管理后台（Flask）
-提供浏览器界面管理关键词、转发配置和命中记录。
+Web 管理后台 + Telegram Webhook（Flask）
+提供浏览器界面管理关键词、转发配置和命中记录，
+同时通过 Webhook 模式接收 Telegram 消息更新。
 与 Telegram bot 共享同一个 DataStore。
 """
-
 import os
+import asyncio
 import secrets
 import logging
 from functools import wraps
@@ -19,18 +20,21 @@ from flask import (
     session,
     flash,
     abort,
+    jsonify,
 )
+
+from telegram import Update
 
 logger = logging.getLogger(__name__)
 
 
 def create_app(data_store, admin_password: str = None, bot_token: str = None):
-    """创建 Flask 应用。
+    """创建 Flask 应用（含 Web 管理后台和 Telegram Webhook）。
 
     Args:
         data_store: 共享的 DataStore 实例
         admin_password: 管理员登录密码，为 None 时从环境变量读取或随机生成
-        bot_token: Telegram bot token，用于通过 API 获取群组名称等（可选）
+        bot_token: Telegram bot token
     """
     app = Flask(
         __name__,
@@ -50,9 +54,38 @@ def create_app(data_store, admin_password: str = None, bot_token: str = None):
         logger.info("  请妥善保存，或设置环境变量 ADMIN_PASSWORD 自定义密码")
         logger.info("=" * 60)
     app.config["ADMIN_PASSWORD"] = admin_password
+
+    # Bot Token
+    if bot_token is None:
+        bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     app.config["BOT_TOKEN"] = bot_token
 
     store = data_store
+
+    # ============ Telegram Bot 初始化（Webhook 模式） ============
+    tg_application = None
+    if bot_token:
+        try:
+            from bot import create_application
+            tg_application = create_application(bot_token)
+            # 初始化 application（不启动 polling）
+            asyncio.run(tg_application.initialize())
+            logger.info("Telegram bot 已初始化（Webhook 模式）")
+
+            # 如果设置了 WEBHOOK_URL 环境变量，自动设置 webhook
+            webhook_url = os.environ.get("WEBHOOK_URL", "")
+            if webhook_url:
+                async def _set_webhook():
+                    await tg_application.bot.set_webhook(
+                        url=f"{webhook_url.rstrip('/')}/webhook/{bot_token}"
+                    )
+                asyncio.run(_set_webhook())
+                logger.info("Webhook 已设置为：%s/webhook/%s", webhook_url.rstrip('/'), bot_token)
+        except Exception as e:
+            logger.error("初始化 Telegram bot 失败：%s", e)
+            tg_application = None
+    else:
+        logger.warning("未设置 TELEGRAM_BOT_TOKEN，Telegram bot 功能不可用")
 
     # ============ 登录装饰器 ============
     def login_required(f):
@@ -65,18 +98,105 @@ def create_app(data_store, admin_password: str = None, bot_token: str = None):
 
     # ============ 工具函数 ============
     def get_chat_display(chat_id: str, data) -> str:
-        """获取聊天的显示名称。"""
         if data.chat_title:
             return f"{data.chat_title} ({chat_id})"
         return chat_id
 
     def safe_int(value: str) -> bool:
-        """检查字符串是否为合法的 chat_id（整数，可选负号）。"""
         try:
             int(value)
             return True
         except (ValueError, TypeError):
             return False
+
+    # ============ Telegram Webhook 端点 ============
+    @app.route("/webhook/<token>", methods=["POST"])
+    def telegram_webhook(token):
+        """接收 Telegram 推送的消息更新。"""
+        if token != app.config["BOT_TOKEN"]:
+            abort(403)
+        if tg_application is None:
+            abort(503, description="Bot not initialized")
+
+        try:
+            data = request.get_json(force=True)
+            update = Update.de_json(data, tg_application.bot)
+            # 在新的事件循环中处理更新
+            asyncio.run(tg_application.process_update(update))
+            return jsonify({"ok": True})
+        except Exception as e:
+            logger.error("处理 webhook 更新失败：%s", e)
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.route("/webhook/status")
+    def webhook_status():
+        """查看 webhook 状态（公开访问，方便排查）。"""
+        info = {
+            "bot_initialized": tg_application is not None,
+            "bot_token_set": bool(app.config["BOT_TOKEN"]),
+        }
+        if tg_application is not None:
+            try:
+                wh_info = asyncio.run(tg_application.bot.get_webhook_info())
+                info["webhook_url"] = wh_info.url
+                info["pending_update_count"] = wh_info.pending_update_count
+                info["last_error"] = wh_info.last_error_message
+            except Exception as e:
+                info["webhook_error"] = str(e)
+        return jsonify(info)
+
+    @app.route("/set-webhook")
+    @login_required
+    def set_webhook_page():
+        """设置 webhook 的页面（需登录）。"""
+        webhook_url = os.environ.get("WEBHOOK_URL", "")
+        current_wh = ""
+        if tg_application is not None:
+            try:
+                wh_info = asyncio.run(tg_application.bot.get_webhook_info())
+                current_wh = wh_info.url or ""
+            except Exception:
+                pass
+        return render_template(
+            "webhook.html",
+            webhook_url=webhook_url,
+            current_webhook=current_wh,
+            bot_token=app.config["BOT_TOKEN"],
+        )
+
+    @app.route("/set-webhook", methods=["POST"])
+    @login_required
+    def set_webhook_action():
+        """设置 webhook URL。"""
+        if tg_application is None:
+            flash("Bot 未初始化，无法设置 webhook。", "error")
+            return redirect(url_for("set_webhook_page"))
+
+        url = request.form.get("webhook_url", "").strip()
+        if not url:
+            flash("请输入 webhook URL。", "error")
+            return redirect(url_for("set_webhook_page"))
+
+        try:
+            full_url = f"{url.rstrip('/')}/webhook/{app.config['BOT_TOKEN']}"
+            asyncio.run(tg_application.bot.set_webhook(url=full_url))
+            flash(f"Webhook 已设置为：{full_url}", "success")
+        except Exception as e:
+            flash(f"设置 webhook 失败：{e}", "error")
+
+        return redirect(url_for("set_webhook_page"))
+
+    @app.route("/delete-webhook", methods=["POST"])
+    @login_required
+    def delete_webhook():
+        """删除 webhook，切回 polling 模式（如果需要）。"""
+        if tg_application is not None:
+            try:
+                asyncio.run(tg_application.bot.delete_webhook())
+                flash("Webhook 已删除。", "success")
+            except Exception as e:
+                flash(f"删除 webhook 失败：{e}", "error")
+        return redirect(url_for("set_webhook_page"))
 
     # ============ 路由 ============
     @app.route("/")
@@ -93,7 +213,6 @@ def create_app(data_store, admin_password: str = None, bot_token: str = None):
                 session["logged_in"] = True
                 session.permanent = True
                 next_page = request.args.get("next", "")
-                # 防止开放重定向
                 if next_page and urlparse(next_page).netloc == "":
                     return redirect(next_page)
                 return redirect(url_for("chat_list"))
@@ -110,7 +229,6 @@ def create_app(data_store, admin_password: str = None, bot_token: str = None):
     @login_required
     def chat_list():
         all_chats = store.get_all()
-        # 按最近命中时间排序
         chat_items = []
         for cid, data in all_chats.items():
             last_hit = data.history[0]["time"] if data.history else "无"
@@ -209,3 +327,13 @@ def create_app(data_store, admin_password: str = None, bot_token: str = None):
         return render_template("login.html", error="页面不存在"), 404
 
     return app
+
+
+# ============ 直接运行入口（本地开发用） ============
+if __name__ == "__main__":
+    from bot import store, BOT_TOKEN, ADMIN_PASSWORD, WEB_HOST, WEB_PORT
+
+    app = create_app(store, admin_password=ADMIN_PASSWORD, bot_token=BOT_TOKEN)
+    logger.info("Web 管理后台 + Telegram Webhook 启动中...")
+    logger.info("访问 http://%s:%d", WEB_HOST, WEB_PORT)
+    app.run(host=WEB_HOST, port=WEB_PORT, debug=False, use_reloader=False)

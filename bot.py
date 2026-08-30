@@ -492,6 +492,43 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error("处理更新时发生异常:", exc_info=context.error)
 
 
+# ============ Bot 应用创建（供 polling 和 webhook 两种模式复用） ============
+def create_application(token: str = None):
+    """创建并配置 Telegram Application，注册所有命令和消息处理器。
+
+    Args:
+        token: Telegram Bot Token，为 None 时从环境变量读取
+
+    Returns:
+        配置好的 Application 实例（未启动）
+    """
+    if token is None:
+        token = BOT_TOKEN
+    application = Application.builder().token(token).build()
+
+    # 命令
+    application.add_handler(CommandHandler("start", cmd_start))
+    application.add_handler(CommandHandler("add", cmd_add))
+    application.add_handler(CommandHandler("remove", cmd_remove))
+    application.add_handler(CommandHandler("list", cmd_list))
+    application.add_handler(CommandHandler("history", cmd_history))
+    application.add_handler(CommandHandler("clear", cmd_clear))
+    application.add_handler(CommandHandler("getid", cmd_getid))
+    application.add_handler(CommandHandler("set_forward", cmd_set_forward))
+    application.add_handler(CommandHandler("forward_info", cmd_forward_info))
+    application.add_handler(CommandHandler("clear_forward", cmd_clear_forward))
+
+    # 消息监听（排除命令）
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, on_message)
+    )
+
+    # 错误处理
+    application.add_error_handler(error_handler)
+
+    return application
+
+
 # ============ 主入口 ============
 def start_web_server():
     """在后台线程启动 Flask Web 管理后台。"""
@@ -528,27 +565,7 @@ def main():
     else:
         logger.info("Web 管理后台已禁用（WEB_ENABLED=0）")
 
-    application = Application.builder().token(BOT_TOKEN).build()
-
-    # 命令
-    application.add_handler(CommandHandler("start", cmd_start))
-    application.add_handler(CommandHandler("add", cmd_add))
-    application.add_handler(CommandHandler("remove", cmd_remove))
-    application.add_handler(CommandHandler("list", cmd_list))
-    application.add_handler(CommandHandler("history", cmd_history))
-    application.add_handler(CommandHandler("clear", cmd_clear))
-    application.add_handler(CommandHandler("getid", cmd_getid))
-    application.add_handler(CommandHandler("set_forward", cmd_set_forward))
-    application.add_handler(CommandHandler("forward_info", cmd_forward_info))
-    application.add_handler(CommandHandler("clear_forward", cmd_clear_forward))
-
-    # 消息监听（排除命令）
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, on_message)
-    )
-
-    # 错误处理
-    application.add_error_handler(error_handler)
+    application = create_application(BOT_TOKEN)
 
     logger.info("机器人启动中...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)

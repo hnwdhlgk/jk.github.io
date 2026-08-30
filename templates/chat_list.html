@@ -112,7 +112,11 @@
 <body>
     <div class="header">
         <h1>关键词监控机器人 · 管理后台</h1>
-        <a href="{{ url_for('logout') }}">退出登录</a>
+        <div style="display:flex;gap:16px;align-items:center;">
+            <a href="{{ url_for('chat_list') }}">群组列表</a>
+            <a href="{{ url_for('set_webhook_page') }}">Webhook</a>
+            <a href="{{ url_for('logout') }}">退出登录</a>
+        </div>
     </div>
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
