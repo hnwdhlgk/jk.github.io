@@ -1,0 +1,21 @@
+# Deta Space 部署配置
+# 文档：https://deta.space/docs/en/build/reference/spacefile
+v: 0
+app_name: telegram-keyword-bot
+
+micros:
+  - name: web
+    src: .
+    engine: python3.9
+    # 启动命令：用 gunicorn 运行 WSGI 应用
+    run: gunicorn wsgi:application --bind 0.0.0.0:${PORT:-8080} --workers 1 --threads 4 --timeout 120
+    port: 8080
+    primary: true
+
+    # 环境变量（在 Deta Space 控制台中设置实际值）
+    # 以下变量需要在 Deta Space 应用设置中配置：
+    # - TELEGRAM_BOT_TOKEN: 你的 Bot Token
+    # - ADMIN_PASSWORD: Web 后台登录密码
+    # - WEBHOOK_URL: 你的 Deta Space 应用域名（部署后设置，用于自动配置 webhook）
+    #
+    # DETA_PROJECT_KEY 会由 Deta Space 自动注入，无需手动设置

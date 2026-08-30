@@ -180,7 +180,17 @@ class DataStore:
             return data
 
 
-store = DataStore(DATA_FILE)
+# 自动选择数据存储：Deta Space 环境用 Deta Base，否则用本地 JSON 文件
+if os.environ.get("DETA_PROJECT_KEY"):
+    try:
+        from deta_store import DetaDataStore
+        store = DetaDataStore()
+        logger.info("使用 Deta Base 数据存储")
+    except Exception as e:
+        logger.warning("Deta Base 初始化失败，回退到本地 JSON 存储：%s", e)
+        store = DataStore(DATA_FILE)
+else:
+    store = DataStore(DATA_FILE)
 
 
 # ============ 工具函数 ============

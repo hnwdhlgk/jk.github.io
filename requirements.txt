@@ -1,2 +1,4 @@
 python-telegram-bot>=20.7
 flask>=3.0
+deta>=0.2.0
+gunicorn>=21.2.0
